@@ -143,14 +143,17 @@ int main(int argc, char **argv) {
 
   normalize_points(points);
 
-  auto start = std::chrono::steady_clock::now();
+  auto start = std::chrono::high_resolution_clock::now();
   // Tanto faz o max_iterations o bixo converge em 5.
-  kmeans_sequential(points, 3, 500);
-  auto end = std::chrono::steady_clock::now();
+  kmeans_sequential(points, 3, 50000);
+  // Record end time
+  auto end = std::chrono::high_resolution_clock::now();
 
-  auto duration =
-      std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-  std::cout << "Execution time: " << duration.count() << " us\n";
+  // Calculate duration in milliseconds
+  std::chrono::duration<double, std::milli> duration = end - start;
+
+  // Output the result
+  std::cout << "Execution time: " << duration.count() << " ms" << std::endl;
 
   std::vector<int> cluster_sizes(3, 0);
   for (const auto &p : points) {
