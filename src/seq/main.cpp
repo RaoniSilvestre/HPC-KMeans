@@ -144,15 +144,10 @@ int main(int argc, char **argv) {
   normalize_points(points);
 
   auto start = std::chrono::high_resolution_clock::now();
-  // Tanto faz o max_iterations o bixo converge em 5.
   kmeans_sequential(points, 3, 50000);
-  // Record end time
   auto end = std::chrono::high_resolution_clock::now();
-
-  // Calculate duration in milliseconds
   std::chrono::duration<double, std::milli> duration = end - start;
 
-  // Output the result
   std::cout << "Execution time: " << duration.count() << " ms" << std::endl;
 
   std::vector<int> cluster_sizes(3, 0);
