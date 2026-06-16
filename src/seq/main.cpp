@@ -42,7 +42,6 @@ void kmeans_sequential(std::vector<Point> &points, int k, int max_iterations) {
   std::vector<std::vector<double>> centroids = init_centroid(points, k);
 
   for (int iter = 0; iter < max_iterations; iter++) {
-    bool changed = false;
 
     for (auto &p : points) {
       double min_dist = std::numeric_limits<double>::max();
@@ -58,13 +57,7 @@ void kmeans_sequential(std::vector<Point> &points, int k, int max_iterations) {
 
       if (p.cluster_id != best_cluster) {
         p.cluster_id = best_cluster;
-        changed = true;
       }
-    }
-
-    if (!changed) {
-      std::cout << "Convergiu na iteracao: " << iter << "\n";
-      break;
     }
 
     std::vector<std::vector<double>> sum_features(
@@ -152,7 +145,7 @@ int main(int argc, char **argv) {
 
   auto start = std::chrono::steady_clock::now();
   // Tanto faz o max_iterations o bixo converge em 5.
-  kmeans_sequential(points, 3, 500000000);
+  kmeans_sequential(points, 3, 500);
   auto end = std::chrono::steady_clock::now();
 
   auto duration =
