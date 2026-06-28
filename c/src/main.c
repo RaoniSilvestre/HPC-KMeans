@@ -1,5 +1,3 @@
-#include <mpi.h>
-
 #include <hpc/kmeans.h>
 #include <omp.h>
 #include <stdio.h>
