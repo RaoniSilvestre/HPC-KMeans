@@ -1,31 +1,88 @@
-.PHONY: all run clean test build
+.PHONY: all run run_gpu run_mpi clean test build build_gpu build_mpi
 
-CC := gcc
+V ?= 0
+
+ifeq ($(V), 0)
+	Q := @
+	print := @echo
+else
+	Q :=
+	print := @true
+endif
+
+CC := clang
+GPUCC := nvc
 MPICC := mpicc
-CCFLAGS := -lm -Iinclude -Wall -Wpedantic -Werror -Wextra -Wshadow -fopenmp
+export OMPI_CC := $(CC)
+OMPFLAGS := -fopenmp
+
+CFLAGS := -std=gnu23 -Iinclude -Wall -Wpedantic -Werror -Wextra -Wshadow $(OMPFLAGS)
+LDFLAGS := -lm $(OMPFLAGS)
+
+ifdef DEBUG
+	CFLAGS += -g -O0 -fsanitize=address,undefined
+	LDFLAGS += -fsanitize=address,undefined
+else
+	CFLAGS += -O3
+endif
+
 OUT_DIR := out
-FILES := src/dataset.c src/algebra.c src/kmeans.c
+BIN := $(OUT_DIR)/kmeans
+GPU_BIN := $(OUT_DIR)/kmeans_gpu
+MPI_BIN := $(OUT_DIR)/kmeans_mpi
+OBJS := src/dataset.o src/algebra.o src/kmeans.o
+MPI_OBJS := $(OBJS:%.o=%_mpi.o)
+GPU_OBJS := $(OBJS:%.o=%_gpu.o)
 
-EXECUTABLE := $(OUT_DIR)/kmeans
-MPI_EXECUTABLE := $(OUT_DIR)/kmeans_mpi
+all: $(BIN) $(GPU_BIN) $(MPI_BIN)
 
-all: build build_mpi
+build: $(BIN)
 
-run: build
-	exec $(EXECUTABLE)
+build_gpu: $(GPU_BIN)
 
-run_mpi: build_mpi
-	mpirun $(MPI_EXECUTABLE)
+build_mpi: $(MPI_BIN)
 
-build:
-	mkdir -p $(OUT_DIR)
-	$(CC) $(CCFLAGS) $(FILES) src/main.c -O3 -o $(EXECUTABLE)
+run: $(BIN)
+	./$<
 
-build_mpi:
-	mkdir -p $(OUT_DIR)
-	$(MPICC) $(CCFLAGS) $(FILES) src/main_mpi.c -O3 -DMPI_ENABLED -o $(MPI_EXECUTABLE)
+run_gpu: $(GPU_BIN)
+	./$<
+
+run_mpi: $(MPI_BIN)
+	mpirun $<
 
 clean:
-	rm -rf $(OUT_DIR)
+	rm -rf $(OUT_DIR) src/*.o src/*_mpi.o src/*_gpu.o
 
-test: build_mpi build clean
+test: $(BIN) $(MPI_BIN) clean
+
+$(BIN): $(OBJS) src/main.o | $(OUT_DIR)
+	$(print) "  LD   $@"
+	$(Q)$(CC) $^ $(LDFLAGS) -o $@
+
+$(GPU_BIN): $(GPU_OBJS) src/main_gpu.o | $(OUT_DIR)
+	$(print) "  LD   $@"
+	$(Q)$(GPUCC) $^ $(LDFLAGS) -o $@
+
+$(MPI_BIN): $(MPI_OBJS) src/main_mpi.o | $(OUT_DIR)
+	$(print) "  LD   $@"
+	$(Q)$(MPICC) $^ $(LDFLAGS) -o $@
+
+%.o: %.c
+	$(print) "  CC   $@"
+	$(Q)$(CC) $(CFLAGS) -c $< -o $@
+
+%_gpu.o: %.c
+	$(print) "  CC   $@"
+	$(Q)$(GPUCC) $(CFLAGS) -DGPU_ENABLED -c $< -o $@
+
+%_mpi.o: %.c
+	$(print) "  CC   $@"
+	$(Q)$(MPICC) $(CFLAGS) -DMPI_ENABLED -c $< -o $@
+
+src/main_mpi.o: src/main_mpi.c
+	$(print) "  CC   $@"
+	$(Q)$(MPICC) $(CFLAGS) -DMPI_ENABLED -c $< -o $@
+
+$(OUT_DIR):
+	$(Q)mkdir -p $@
