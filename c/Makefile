@@ -63,7 +63,7 @@ $(BIN): $(OBJS) src/main.o | $(OUT_DIR)
 
 $(GPU_BIN): $(GPU_OBJS) src/main_gpu.o | $(OUT_DIR)
 	$(print) "  LD   $@"
-	$(Q)$(GPUCC) $^ $(LDFLAGS) -o $@
+	$(Q)$(GPUCC) $^ $(LDFLAGS) -mp=gpu -o $@
 
 $(MPI_BIN): $(MPI_OBJS) src/main_mpi.o | $(OUT_DIR)
 	$(print) "  LD   $@"
@@ -75,7 +75,7 @@ $(MPI_BIN): $(MPI_OBJS) src/main_mpi.o | $(OUT_DIR)
 
 %_gpu.o: %.c
 	$(print) "  CC   $@"
-	$(Q)$(GPUCC) $(CFLAGS) -DGPU_ENABLED -c $< -o $@
+	$(Q)$(GPUCC) $(CFLAGS) -mp=gpu -DGPU_ENABLED -c $< -o $@
 
 %_mpi.o: %.c
 	$(print) "  CC   $@"

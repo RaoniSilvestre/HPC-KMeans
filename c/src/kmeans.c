@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <stdio.h>
 #include <string.h>
 #include <threads.h>
 #include <time.h>
@@ -160,10 +161,8 @@ static void update_centroids(f64* centroids, u32* labels, usize n_feats,
 	assert(sums != NULL);
 
 #ifdef GPU_ENABLED
-#pragma omp target teams distribute parallel for map(                         \
-		tofrom : count[ : n_clusters], sums[ : n_clusters * n_feats]) \
-	map(to : centroids[ : n_clusters * n_feats], labels[ : len],          \
-		    data[ : len * n_feats])                                   \
+#pragma omp target teams distribute parallel for map(        \
+		to : labels[ : len], data[ : len * n_feats]) \
 	reduction(+ : count[ : n_clusters], sums[ : n_clusters * n_feats])
 	for (usize p = 0; p < len; p++) {
 		count[labels[p]]++;
@@ -185,7 +184,6 @@ static void update_centroids(f64* centroids, u32* labels, usize n_feats,
 		}
 	}
 #endif /* ifdef GPU_ENABLED */
-
 	for (usize c = 0; c < n_clusters; c++) {
 		f64* centroid = &centroids[IDX(c, n_feats)];
 		if (count[c] == 0) {

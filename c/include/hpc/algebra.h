@@ -14,6 +14,9 @@ void vec_add(f64* dst, f64* v, usize dim);
 void vec_mul_scalar(f64* v, f64 scalar, usize dim);
 
 void mean_vec(f64* dst, f64** set, usize size, usize dim);
-f64  euclidean_dist(f64* u, f64* v, usize dim);
+
+#pragma omp declare target
+f64 euclidean_dist(f64* u, f64* v, usize dim);
+#pragma omp end declare target
 
 #endif // !__ALGEBRA_H__

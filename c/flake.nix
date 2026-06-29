@@ -69,5 +69,15 @@
       };
     in {
       devShells.default = fhs.env;
+      devShells.python = pkgs.mkShell {
+        packages = with pkgs; [
+          (python314.withPackages (ps:
+            with ps; [
+              pandas
+              matplotlib
+              numpy
+            ]))
+        ];
+      };
     });
 }
