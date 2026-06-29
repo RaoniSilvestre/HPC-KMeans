@@ -44,13 +44,13 @@ build_gpu: $(GPU_BIN)
 build_mpi: $(MPI_BIN)
 
 run: $(BIN)
-	./$< $(DATASET)
+	$(Q)./$< $(DATASET)
 
 run_gpu: $(GPU_BIN)
-	./$< $(DATASET)
+	$(Q)./$< $(DATASET)
 
 run_mpi: $(MPI_BIN)
-	mpirun $< $(DATASET)
+	$(Q)mpirun $< $(DATASET)
 
 clean:
 	rm -rf $(OUT_DIR) src/*.o src/*_mpi.o src/*_gpu.o
