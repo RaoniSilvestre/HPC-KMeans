@@ -33,6 +33,7 @@ MPI_BIN := $(OUT_DIR)/kmeans_mpi
 OBJS := src/dataset.o src/algebra.o src/kmeans.o
 MPI_OBJS := $(OBJS:%.o=%_mpi.o)
 GPU_OBJS := $(OBJS:%.o=%_gpu.o)
+DATASET ?= data/seeds_dataset.txt
 
 all: $(BIN) $(GPU_BIN) $(MPI_BIN)
 
@@ -43,13 +44,13 @@ build_gpu: $(GPU_BIN)
 build_mpi: $(MPI_BIN)
 
 run: $(BIN)
-	./$<
+	./$< $(DATASET)
 
 run_gpu: $(GPU_BIN)
-	./$<
+	./$< $(DATASET)
 
 run_mpi: $(MPI_BIN)
-	mpirun $<
+	mpirun $< $(DATASET)
 
 clean:
 	rm -rf $(OUT_DIR) src/*.o src/*_mpi.o src/*_gpu.o

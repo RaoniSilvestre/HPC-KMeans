@@ -6,30 +6,7 @@
 
 #include <hpc/dataset.h>
 
-struct holdout train_test_split(struct dataset* X, f64 split)
-{
-	assert(split < 1 && split > 0);
-	usize train_len = X->len * split;
-	usize remaining_len = X->len - train_len;
-
-	struct dataset X_train = {
-		.data = X->data,
-		.n_feats = X->n_feats,
-		.len = train_len,
-	};
-	struct dataset X_test = {
-		.data = &X->data[train_len * X->n_feats],
-		.n_feats = X->n_feats,
-		.len = remaining_len,
-	};
-
-	return (struct holdout){
-		.X_train = X_train,
-		.X_test = X_test,
-	};
-}
-
-struct dataset read_from_file(char* path)
+struct dataset from_file(char* path)
 {
 	FILE* fp = fopen(path, "r");
 	if (!fp) {
@@ -71,5 +48,38 @@ struct dataset read_from_file(char* path)
 		.data = data,
 		.len = len / width,
 		.n_feats = width,
+	};
+}
+
+struct dataset from_cmdline(int argc, char** argv)
+{
+	if (argc < 1) {
+		fprintf(stderr,
+			"expected at least one argument for the dataset\n");
+		exit(1);
+	}
+	return from_file(argv[1]);
+}
+
+struct holdout train_test_split(struct dataset* X, f64 split)
+{
+	assert(split < 1 && split > 0);
+	usize train_len = X->len * split;
+	usize remaining_len = X->len - train_len;
+
+	struct dataset X_train = {
+		.data = X->data,
+		.n_feats = X->n_feats,
+		.len = train_len,
+	};
+	struct dataset X_test = {
+		.data = &X->data[train_len * X->n_feats],
+		.n_feats = X->n_feats,
+		.len = remaining_len,
+	};
+
+	return (struct holdout){
+		.X_train = X_train,
+		.X_test = X_test,
 	};
 }

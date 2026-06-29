@@ -13,26 +13,22 @@ int main(int argc, char** argv)
 	struct dataset d;
 	struct kmeans  km = kmeans_init(3, 300);
 	if (ctx.rank == 0) {
-		d = read_from_file("data/seeds_dataset.txt");
+		d = from_cmdline(argc, argv);
 	}
 
-	// Fit time measure.
-	{
-		MPI_Barrier(MPI_COMM_WORLD);
-		f64 start = MPI_Wtime();
+	MPI_Barrier(MPI_COMM_WORLD);
+	f64 start = MPI_Wtime();
 
-		kmeans_mpi_fit(&ctx, &km, &d);
+	kmeans_mpi_fit(&ctx, &km, &d);
 
-		MPI_Barrier(MPI_COMM_WORLD);
-		f64 end = MPI_Wtime();
+	MPI_Barrier(MPI_COMM_WORLD);
+	f64 end = MPI_Wtime();
 
-		if (ctx.rank == 0) {
-			printf("Elapsed time: %f seconds\n", end - start);
-		}
+	if (ctx.rank == 0) {
+		printf("Elapsed time: %f seconds\n", end - start);
 	}
 
 	MPI_Finalize();
 
 	return 0;
 }
-#endif /* ifdef MPI_ENABLED */

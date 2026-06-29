@@ -3,10 +3,10 @@
 
 #include <hpc/kmeans.h>
 
-int main(void)
+int main(int argc, char** argv)
 {
 	struct kmeans  km = kmeans_init(3, 300);
-	struct dataset d = read_from_file("data/seeds_dataset.txt");
+	struct dataset d = from_cmdline(argc, argv);
 
 	f64 start = omp_get_wtime();
 	{

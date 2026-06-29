@@ -8,7 +8,8 @@ struct dataset {
 	u32   n_feats;
 };
 
-struct dataset read_from_file(char* path);
+struct dataset from_file(char* path);
+struct dataset from_cmdline(int argc, char** argv);
 
 struct holdout {
 	struct dataset X_train;
