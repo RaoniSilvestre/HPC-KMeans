@@ -2,3 +2,6 @@
 .direnv
 .envrc
 out
+
+*.o
+compile_commands.json
