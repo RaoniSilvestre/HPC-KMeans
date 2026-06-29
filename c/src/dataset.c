@@ -44,8 +44,7 @@ struct dataset read_from_file(char* path)
 
 	char* line = 0;
 	usize line_len = 0;
-	i32   read;
-	while ((read = getline(&line, &line_len, fp)) != -1) {
+	while (getline(&line, &line_len, fp) != -1) {
 		char* tok = strtok(line, "\t");
 		while (tok) {
 			if (!counted)

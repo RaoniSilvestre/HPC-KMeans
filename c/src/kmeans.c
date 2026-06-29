@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdbool.h>
 #include <string.h>
+#include <threads.h>
 #include <time.h>
 #include <omp.h>
 
@@ -14,7 +15,7 @@
 
 static inline u32* get_seed(void)
 {
-	static _Thread_local u32 seed = 0;
+	static thread_local u32 seed = 0;
 	if (seed == 0)
 		seed = (u32)time(NULL) ^ ((u32)omp_get_thread_num() << 16);
 	return &seed;
@@ -50,7 +51,7 @@ static struct closest_pt min_dist(f64* pt, f64* pts, usize pt_dim,
 				  usize pts_len)
 {
 	f64   min = INFINITY;
-	usize closest = -1;
+	usize closest;
 	for (usize i = 0; i < pts_len; i++) {
 		f64 dist = euclidean_dist(pt, &pts[IDX(i, pt_dim)], pt_dim);
 		if (dist < min) {
@@ -121,8 +122,23 @@ static inline void init_centroids(struct kmeans* km, struct dataset* X)
 static bool update_labels(u32* labels, usize n_feats, f64* centroids,
 			  u32 n_clusters, f64* data, usize len)
 {
-	bool changed = false;
-#pragma omp parallel for
+	bool changed = 0;
+#ifdef GPU_ENABLED
+#pragma omp target teams distribute parallel for map(tofrom : labels[ : len]) \
+	map(to : centroids[ : n_clusters * n_feats], data[ : len * n_feats])  \
+	reduction(|| : changed)
+	for (usize j = 0; j < len; j++) {
+		struct closest_pt cluster = min_dist(
+			&data[IDX(j, n_feats)], centroids, n_feats, n_clusters);
+		if (labels[j] != cluster.idx) {
+			labels[j] = cluster.idx;
+
+			// HACK: We get an error that changed is unused if we don't do this.
+			changed = changed || true;
+		}
+	}
+#else
+#pragma omp parallel for reduction(|| : changed)
 	for (usize j = 0; j < len; j++) {
 		struct closest_pt cluster = min_dist(
 			&data[IDX(j, n_feats)], centroids, n_feats, n_clusters);
@@ -131,6 +147,7 @@ static bool update_labels(u32* labels, usize n_feats, f64* centroids,
 			changed = true;
 		}
 	}
+#endif /* ifdef GPU_ENABLED */
 	return changed;
 }
 
@@ -142,6 +159,21 @@ static void update_centroids(f64* centroids, u32* labels, usize n_feats,
 	f64* sums = calloc(n_clusters * n_feats, sizeof(f64));
 	assert(sums != NULL);
 
+#ifdef GPU_ENABLED
+#pragma omp target teams distribute parallel for map(                         \
+		tofrom : count[ : n_clusters], sums[ : n_clusters * n_feats]) \
+	map(to : centroids[ : n_clusters * n_feats], labels[ : len],          \
+		    data[ : len * n_feats])                                   \
+	reduction(+ : count[ : n_clusters], sums[ : n_clusters * n_feats])
+	for (usize p = 0; p < len; p++) {
+		count[labels[p]]++;
+
+		for (usize f = 0; f < n_feats; f++) {
+			sums[IDX(labels[p], n_feats) + f] +=
+				data[IDX(p, n_feats) + f];
+		}
+	}
+#else
 #pragma omp parallel for reduction(+ : count[ : n_clusters], \
 					   sums[ : n_clusters * n_feats])
 	for (usize p = 0; p < len; p++) {
@@ -152,6 +184,8 @@ static void update_centroids(f64* centroids, u32* labels, usize n_feats,
 				data[IDX(p, n_feats) + f];
 		}
 	}
+#endif /* ifdef GPU_ENABLED */
+
 	for (usize c = 0; c < n_clusters; c++) {
 		f64* centroid = &centroids[IDX(c, n_feats)];
 		if (count[c] == 0) {

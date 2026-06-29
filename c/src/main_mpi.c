@@ -1,5 +1,3 @@
-#ifdef MPI_ENABLED
-
 #include <mpi.h>
 #include <stdio.h>
 

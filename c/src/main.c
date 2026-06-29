@@ -1,6 +1,7 @@
-#include <hpc/kmeans.h>
 #include <omp.h>
 #include <stdio.h>
+
+#include <hpc/kmeans.h>
 
 int main(void)
 {
