@@ -2,7 +2,6 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdbool.h>
-#include <stdio.h>
 #include <string.h>
 #include <threads.h>
 #include <time.h>
@@ -126,31 +125,23 @@ static bool update_labels(u32* labels, usize n_feats, f64* centroids,
 #pragma omp target teams distribute parallel for map(tofrom : labels[ : len]) \
 	map(to : centroids[ : n_clusters * n_feats], data[ : len * n_feats])  \
 	reduction(|| : changed)
-	for (usize j = 0; j < len; j++) {
+#else
+#pragma omp parallel for reduction(|| : changed)
+#endif /* ifdef GPU_ENABLED */
+	for (usize p = 0; p < len; p++) {
 		struct closest_pt cluster = min_dist(
-			&data[IDX(j, n_feats)], centroids, n_feats, n_clusters);
-		if (labels[j] != cluster.idx) {
-			labels[j] = cluster.idx;
+			&data[IDX(p, n_feats)], centroids, n_feats, n_clusters);
+		if (labels[p] != cluster.idx) {
+			labels[p] = cluster.idx;
 
 			// HACK: We get an error that changed is unused if we don't do this.
 			changed = changed || true;
 		}
 	}
-#else
-#pragma omp parallel for reduction(|| : changed)
-	for (usize j = 0; j < len; j++) {
-		struct closest_pt cluster = min_dist(
-			&data[IDX(j, n_feats)], centroids, n_feats, n_clusters);
-		if (labels[j] != cluster.idx) {
-			labels[j] = cluster.idx;
-			changed = true;
-		}
-	}
-#endif /* ifdef GPU_ENABLED */
 	return changed;
 }
 
-static void update_centroids(f64* count, f64* sums, f64* centroids, u32* labels,
+static void update_centroids(u32* count, f64* sums, f64* centroids, u32* labels,
 			     usize n_feats, u32 n_clusters, f64* data,
 			     usize len)
 {
@@ -158,17 +149,10 @@ static void update_centroids(f64* count, f64* sums, f64* centroids, u32* labels,
 #pragma omp target teams distribute parallel for map(        \
 		to : labels[ : len], data[ : len * n_feats]) \
 	reduction(+ : count[ : n_clusters], sums[ : n_clusters * n_feats])
-	for (usize p = 0; p < len; p++) {
-		count[labels[p]]++;
-
-		for (usize f = 0; f < n_feats; f++) {
-			sums[IDX(labels[p], n_feats) + f] +=
-				data[IDX(p, n_feats) + f];
-		}
-	}
 #else
 #pragma omp parallel for reduction(+ : count[ : n_clusters], \
 					   sums[ : n_clusters * n_feats])
+#endif /* ifdef GPU_ENABLED */
 	for (usize p = 0; p < len; p++) {
 		count[labels[p]]++;
 
@@ -177,12 +161,11 @@ static void update_centroids(f64* count, f64* sums, f64* centroids, u32* labels,
 				data[IDX(p, n_feats) + f];
 		}
 	}
-#endif /* ifdef GPU_ENABLED */
 	for (usize c = 0; c < n_clusters; c++) {
 		f64* centroid = &centroids[IDX(c, n_feats)];
 		if (count[c] == 0) {
-			vec_assign(&centroids[IDX(c, n_feats)],
-				   &data[IDX(rand_pos(len), n_feats)], n_feats);
+			vec_assign(centroid, &data[IDX(rand_pos(len), n_feats)],
+				   n_feats);
 			continue;
 		}
 		for (usize f = 0; f < n_feats; f++) {
@@ -196,11 +179,11 @@ void kmeans_fit(struct kmeans* km, struct dataset* X)
 	assert(km != NULL);
 	assert(X != NULL);
 
-	init_centroids(km, X);
+	init_centroids(km, X); // Não é paralelizável.
 
 	u32* labels = calloc(X->len, sizeof(u32));
 	assert(labels != NULL);
-	f64* count = calloc(km->n_clusters, sizeof(f64));
+	u32* count = calloc(km->n_clusters, sizeof(u32));
 	assert(count != NULL);
 	f64* sums = calloc(km->n_clusters * X->n_feats, sizeof(f64));
 	assert(sums != NULL);
@@ -214,7 +197,7 @@ void kmeans_fit(struct kmeans* km, struct dataset* X)
 		if (!changed)
 			break;
 
-		memset(count, 0, km->n_clusters * sizeof(f64));
+		memset(count, 0, km->n_clusters * sizeof(u32));
 		memset(sums, 0, km->n_clusters * X->n_feats * sizeof(f64));
 	}
 	free(labels);
