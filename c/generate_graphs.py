@@ -168,9 +168,16 @@ def plot_comparison(df, n):
         labels.append(impl)
         best_times.append(sub["duration"].min())
 
-    fig, ax = plt.subplots(figsize=(8, 5))
-    colors = [IMPL_COLORS[impl] for impl in labels]
-    bars = ax.bar([IMPL_LABELS[i] for i in labels], best_times, color=colors)
+    seq_row = get_data(df, "omp", n)
+    seq_row = seq_row[seq_row["threads"] == 1]
+    if not seq_row.empty:
+        labels.append("sequential")
+        best_times.append(seq_row["duration"].iloc[0])
+
+    fig, ax = plt.subplots(figsize=(9, 5))
+    colors = [IMPL_COLORS[impl] for impl in labels[:-1]] + ["#000000"]
+    display_labels = [IMPL_LABELS[i] for i in labels[:-1]] + ["Sequential"]
+    bars = ax.bar(display_labels, best_times, color=colors)
     ax.set_ylabel("Best Time (s)")
     ax.set_title(f"Best Execution Time Comparison (N={n})")
     ax.set_yscale("log")
