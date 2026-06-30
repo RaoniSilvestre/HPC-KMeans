@@ -10,6 +10,7 @@ only included in the final per-dataset comparison graph.
 from pathlib import Path
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 
 CSV_PATH = "results.csv"
@@ -160,28 +161,41 @@ def plot_speedup_efficiency_comparison(df, n):
 
 
 def plot_comparison(df, n):
-    labels, best_times = [], []
+    labels, best_times, best_configs = [], [], []
     for impl in IMPLS:
         sub = get_data(df, impl, n)
         if sub.empty:
             continue
+        best = sub.loc[sub["duration"].idxmin()]
         labels.append(impl)
-        best_times.append(sub["duration"].min())
+        best_times.append(best["duration"])
+        if impl == "omp":
+            cfg = f"T:{int(best['threads'])}"
+        elif impl == "mpi":
+            cfg = f"P:{int(best['processes'])}"
+        elif impl == "mpi_omp":
+            cfg = f"T:{int(best['threads'])},P:{int(best['processes'])}"
+        else:
+            cfg = ""
+        best_configs.append(cfg)
 
     seq_row = get_data(df, "omp", n)
     seq_row = seq_row[seq_row["threads"] == 1]
     if not seq_row.empty:
         labels.append("sequential")
         best_times.append(seq_row["duration"].iloc[0])
+        best_configs.append("T:1")
 
-    fig, ax = plt.subplots(figsize=(9, 5))
+    fig, ax = plt.subplots(figsize=(9, 5.5))
     colors = [IMPL_COLORS[impl] for impl in labels[:-1]] + ["#000000"]
     display_labels = [IMPL_LABELS[i] for i in labels[:-1]] + ["Sequential"]
     bars = ax.bar(display_labels, best_times, color=colors)
     ax.set_ylabel("Best Time (s)")
     ax.set_title(f"Best Execution Time Comparison (N={n})")
     ax.set_yscale("log")
-    for bar, t in zip(bars, best_times):
+    ymin, ymax = ax.get_ylim()
+    ax.set_ylim(ymin, ymax * 1.8)
+    for bar, t, cfg in zip(bars, best_times, best_configs):
         ax.text(
             bar.get_x() + bar.get_width() / 2,
             bar.get_height(),
@@ -190,6 +204,16 @@ def plot_comparison(df, n):
             va="bottom",
             fontsize=9,
         )
+        if cfg:
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() * 1.25,
+                cfg,
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                fontweight="bold",
+            )
     ax.grid(True, alpha=0.3, axis="y", which="both")
     plt.tight_layout()
     plt.savefig(OUT_DIR / f"comparison_N{n}.png", dpi=120)

@@ -6,7 +6,6 @@
 
 struct kmeans {
 	f64* centroids;
-	u32* labels;
 	u32  n_clusters;
 	u32  max_iter;
 };

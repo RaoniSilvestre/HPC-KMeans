@@ -70,7 +70,6 @@ struct kmeans kmeans_init(u32 n_clusters, u32 max_iter)
 
 	return (struct kmeans){
 		.centroids = NULL,
-		.labels = NULL,
 		.n_clusters = n_clusters,
 		.max_iter = max_iter,
 	};
@@ -79,7 +78,6 @@ struct kmeans kmeans_init(u32 n_clusters, u32 max_iter)
 void kmeans_deinit(struct kmeans* km)
 {
 	free(km->centroids);
-	free(km->labels);
 }
 
 static inline void init_centroids(struct kmeans* km, struct dataset* X)
@@ -152,14 +150,10 @@ static bool update_labels(u32* labels, usize n_feats, f64* centroids,
 	return changed;
 }
 
-static void update_centroids(f64* centroids, u32* labels, usize n_feats,
-			     u32 n_clusters, f64* data, usize len)
+static void update_centroids(f64* count, f64* sums, f64* centroids, u32* labels,
+			     usize n_feats, u32 n_clusters, f64* data,
+			     usize len)
 {
-	f64* count = calloc(n_clusters, sizeof(f64));
-	assert(count != NULL);
-	f64* sums = calloc(n_clusters * n_feats, sizeof(f64));
-	assert(sums != NULL);
-
 #ifdef GPU_ENABLED
 #pragma omp target teams distribute parallel for map(        \
 		to : labels[ : len], data[ : len * n_feats]) \
@@ -206,18 +200,26 @@ void kmeans_fit(struct kmeans* km, struct dataset* X)
 
 	u32* labels = calloc(X->len, sizeof(u32));
 	assert(labels != NULL);
+	f64* count = calloc(km->n_clusters, sizeof(f64));
+	assert(count != NULL);
+	f64* sums = calloc(km->n_clusters * X->n_feats, sizeof(f64));
+	assert(sums != NULL);
 
 	for (usize i = 0; i < km->max_iter; i++) {
 		bool changed = update_labels(labels, X->n_feats, km->centroids,
 					     km->n_clusters, X->data, X->len);
-		update_centroids(km->centroids, labels, X->n_feats,
+		update_centroids(count, sums, km->centroids, labels, X->n_feats,
 				 km->n_clusters, X->data, X->len);
 
 		if (!changed)
 			break;
-	}
 
-	km->labels = labels;
+		memset(count, 0, km->n_clusters * sizeof(f64));
+		memset(sums, 0, km->n_clusters * X->n_feats * sizeof(f64));
+	}
+	free(labels);
+	free(count);
+	free(sums);
 }
 
 void kmeans_predict(struct kmeans* km, struct dataset* y, u32* result)
@@ -299,34 +301,22 @@ alloc_error:
 	MPI_Abort(MPI_COMM_WORLD, 1);
 }
 
-static inline void mpi_update_centroids(f64* centroids, u32* labels,
-					usize n_feats, u32 n_clusters,
-					f64* data, usize len)
+static inline void mpi_update_centroids(f64* count, f64* sum, f64* centroids,
+					u32* labels, usize n_feats,
+					u32 n_clusters, f64* data, usize len)
 {
-	f64* local_count = calloc(n_clusters, sizeof(f64));
-	if (!local_count)
-		goto alloc_error;
-	f64* local_sum = calloc(n_clusters * n_feats, sizeof(f64));
-	if (!local_sum)
-		goto alloc_error;
-	f64* count = calloc(n_clusters, sizeof(f64));
-	if (!count)
-		goto alloc_error;
-	f64* sum = calloc(n_clusters * n_feats, sizeof(f64));
-	if (!sum)
-		goto alloc_error;
 	for (usize p = 0; p < len; p++) {
-		local_count[labels[p]]++;
+		count[labels[p]]++;
 
 		for (usize f = 0; f < n_feats; f++) {
-			local_sum[IDX(labels[p], n_feats) + f] +=
+			sum[IDX(labels[p], n_feats) + f] +=
 				data[IDX(p, n_feats) + f];
 		}
 	}
-	MPI_Allreduce(local_count, count, n_clusters, MPI_DOUBLE, MPI_SUM,
+	MPI_Allreduce(MPI_IN_PLACE, count, n_clusters, MPI_DOUBLE, MPI_SUM,
 		      MPI_COMM_WORLD);
-	MPI_Allreduce(local_sum, sum, n_clusters * n_feats, MPI_DOUBLE, MPI_SUM,
-		      MPI_COMM_WORLD);
+	MPI_Allreduce(MPI_IN_PLACE, sum, n_clusters * n_feats, MPI_DOUBLE,
+		      MPI_SUM, MPI_COMM_WORLD);
 	for (usize c = 0; c < n_clusters; c++) {
 		f64* centroid = &centroids[IDX(c, n_feats)];
 		if (count[c] == 0) {
@@ -337,15 +327,8 @@ static inline void mpi_update_centroids(f64* centroids, u32* labels,
 			centroid[f] = sum[IDX(c, n_feats) + f] / count[c];
 		}
 	}
-	free(sum);
-	free(count);
-	free(local_sum);
-	free(local_count);
 
 	return;
-alloc_error:
-	fprintf(stderr, "alloc error\n");
-	MPI_Abort(MPI_COMM_WORLD, 1);
 }
 
 void kmeans_mpi_fit(struct mpi_ctx* ctx, struct kmeans* km, struct dataset* X)
@@ -370,20 +353,32 @@ void kmeans_mpi_fit(struct mpi_ctx* ctx, struct kmeans* km, struct dataset* X)
 	u32* labels = calloc(len, sizeof(u32));
 	if (!labels)
 		goto alloc_error;
+	f64* count = calloc(km->n_clusters, sizeof(f64));
+	if (!count)
+		goto alloc_error;
+	f64* sum = calloc(km->n_clusters * n_feats, sizeof(f64));
+	if (!sum)
+		goto alloc_error;
 
 	for (usize i = 0; i < km->max_iter; i++) {
 		i32 local_changed = update_labels(labels, n_feats, centroids,
 						  km->n_clusters, recvbuf,
 						  local_len);
-		mpi_update_centroids(centroids, labels, n_feats, km->n_clusters,
-				     recvbuf, local_len);
+		mpi_update_centroids(count, sum, centroids, labels, n_feats,
+				     km->n_clusters, recvbuf, local_len);
 		i32 changed;
 		MPI_Allreduce(&local_changed, &changed, 1, MPI_INT, MPI_LOR,
 			      MPI_COMM_WORLD);
 
 		if (!changed)
 			break;
+
+		memset(count, 0, km->n_clusters * sizeof(f64));
+		memset(sum, 0, km->n_clusters * n_feats * sizeof(f64));
 	}
+	free(labels);
+	free(count);
+	free(sum);
 
 	return;
 
